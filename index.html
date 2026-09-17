@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>專案關卡室 · ZEONIC</title><link rel="stylesheet" href="style.css"><script defer src="logic.js"></script><script defer src="demo.js"></script><script defer src="app.js"></script></head>
+<body><header><a class="brand" href="index.html"><img class="brand-logo" src="assets/zeonic.png" alt="ZEONIC"><small>德好將大數據 · 專案關卡室</small></a><span class="mode">示意資料版 · 尚未串接登入</span></header>
+<main><section class="intro"><div><p class="eyebrow">PROJECT QUEST / 專案總覽</p><h1>每一關，都看得見進展。</h1><p class="subtitle">掌握正在推進的工作，找出卡點，走向下一個里程碑。</p></div><div class="dateline"><strong id="today"></strong><span id="updated"></span><small>日期判斷：Asia/Taipei</small></div></section>
+<div class="demo-note">目前顯示虛構範例，沒有連接 ClickUp。公司登入與真實資料存取尚未啟用。</div>
+<section id="stats" class="stats" aria-label="專案統計"></section>
+<section class="workspace"><div class="toolbar"><div class="filters" role="group" aria-label="專案篩選"><button data-filter="all" aria-pressed="true">全部專案</button><button data-filter="active" aria-pressed="false">進行中</button><button data-filter="blocked" aria-pressed="false">有卡關</button><button data-filter="late" aria-pressed="false">有逾期</button><button data-filter="done" aria-pressed="false">已完成</button></div><label class="search">搜尋專案 <input id="search" type="search" placeholder="名稱、客戶或負責人"></label></div>
+<div class="list-heading"><span id="count" aria-live="polite"></span><span>✓ 已完成　● 進行中　! 卡關　○ 未開始 · 各關可並行</span></div><div id="projects"></div></section>
+<footer>完成度依已完成的直接子任務計算，工作步驟另計。連線僅呈現關卡排列，不代表前置依賴。<br>沒有日期的項目顯示「未設定」，不會自動判為逾期。</footer></main>
+<dialog id="detail" aria-labelledby="detail-title"><div class="dialog-bar"><span>關卡詳情</span><button id="close" aria-label="關閉關卡詳情">關閉 ✕</button></div><div id="detail-body"></div></dialog>
+</body></html>
