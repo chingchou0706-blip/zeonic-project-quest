@@ -2,6 +2,8 @@
 const Q = window.Quest, E = Q.escape;
 let projects = [], lists = [];
 let filter = 'all';
+const allowedStatuses = new Set(['訂單GET', '導入執行', '報價中', '素材準備中', '審查會議', '簽約', '期中', '期末', '待複查']);
+const includedProject = p => allowedStatuses.has(String(p.rawStatus || '').trim().toUpperCase());
 const dateText = value => Q.validDate(value) ? value : '未設定';
 function timing(date, status) {
   const n = Q.remaining(date);
@@ -23,15 +25,15 @@ function card(p) {
 }
 function render() {
   const query = document.querySelector('#search').value.trim().toLowerCase();
-  const visibleProjects = projects.filter(p => filter === 'done' ? p.status === '已完成' : filter === 'ended' ? p.status === '已結束' : !p.terminal && p.status !== '已完成');
-  const result = visibleProjects.filter(p => `${p.name} ${p.client} ${p.owner}`.toLowerCase().includes(query)).filter(p=>filter==='all'||filter==='active'&&p.status==='進行中'||filter==='done'||filter==='ended'||filter==='blocked'&&blocked(p)||filter==='late'&&Q.isLate(p));
-  const openProjects = projects.filter(p => !p.terminal && p.status !== '已完成');
-  document.querySelector('#stats').innerHTML = [[openProjects.length,'全部專案','所有清單未完成的主任務'],[openProjects.filter(p=>p.status==='進行中').length,'進行中','關卡允許同時推進'],[openProjects.filter(blocked).length,'有卡關','含等待前置關卡'],[openProjects.filter(p=>Q.isLate(p)).length,'有逾期','含專案、關卡與工作步驟'],[projects.filter(p=>p.status==='已完成').length,'已完成','所有清單已完成的專案']].map(([n,label,note],i)=>`<div class="stat"><strong class="${i===2||i===3?'red':''}">${n}</strong><span>${label}</span><small>${note}</small></div>`).join('');
+  const visibleProjects = projects.filter(p => filter === 'done' ? p.status === '已完成' : includedProject(p));
+  const result = visibleProjects.filter(p => `${p.name} ${p.client} ${p.owner}`.toLowerCase().includes(query)).filter(p=>filter==='all'||filter==='active'&&p.status==='進行中'||filter==='done'||filter==='blocked'&&blocked(p)||filter==='late'&&Q.isLate(p));
+  const openProjects = projects.filter(includedProject);
+  document.querySelector('#stats').innerHTML = [[openProjects.length,'全部專案','指定狀態的主任務'],[openProjects.filter(p=>p.status==='進行中').length,'進行中','關卡允許同時推進'],[openProjects.filter(blocked).length,'有卡關','含等待前置關卡'],[openProjects.filter(p=>Q.isLate(p)).length,'有逾期','含專案、關卡與工作步驟'],[projects.filter(p=>p.status==='已完成').length,'已完成','所有清單已完成的專案']].map(([n,label,note],i)=>`<div class="stat"><strong class="${i===2||i===3?'red':''}">${n}</strong><span>${label}</span><small>${note}</small></div>`).join('');
   document.querySelector('#projects').innerHTML = lists.map(list => {
     const group = result.filter(p => p.listId === list.id);
     return `<section class="list-group" aria-label="${E(list.name)}"><div class="group-heading"><h2>${E(list.name)}</h2><span>${group.length} 個專案</span></div>${group.length ? group.map(card).join('') : '<div class="empty">此清單沒有符合條件的專案。</div>'}</section>`;
   }).join('');
-  document.querySelector('#count').textContent = `${result.length} 個專案 / 所有清單共 ${projects.length} 個（含已完成）`;
+  document.querySelector('#count').textContent = `${result.length} 個符合條件的專案`;
 }
 function showTask(p,t) {
   const parsed = Q.parse(t.description), d = Q.due(t), reasons=Q.blockers(t,p.tasks);
