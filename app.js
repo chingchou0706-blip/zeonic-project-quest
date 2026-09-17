@@ -2,7 +2,7 @@
 const Q = window.Quest, E = Q.escape;
 let projects = [], lists = [];
 let filter = 'all';
-const allowedStatuses = new Set(['訂單GET', '導入執行', '報價中', '素材準備中', '審查會議', '簽約', '期中', '期末', '待複查']);
+const allowedStatuses = new Set(['訂單GET', '導入執行', '報價中', '素材準備中', '審查會議', '簽約', '期中', '期末', '待複查', '驗收']);
 const includedProject = p => allowedStatuses.has(String(p.rawStatus || '').trim().toUpperCase());
 const dateText = value => Q.validDate(value) ? value : '未設定';
 function timing(date, status) {
