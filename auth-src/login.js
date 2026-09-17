@@ -27,7 +27,7 @@ async function load() {
     if (!response.ok) throw new Error(data.error || `同步失敗（${response.status}）`);
     if (!Array.isArray(data.projects) || !Array.isArray(data.lists)) throw new Error('伺服器回傳格式錯誤。');
     window.updateQuestData(data);
-    message.textContent = '已連接 ClickUp · 唯讀模式';
+    message.textContent = '已連接 ClickUp · 可完成關卡';
     login.hidden = true; logout.hidden = false; refresh.hidden = false;
     document.querySelector('.mode').textContent = account.name || '公司帳號已登入';
   } catch (error) {
@@ -62,3 +62,17 @@ logout.addEventListener('click', async () => {
 });
 refresh.addEventListener('click', load);
 initialize();
+
+window.completeQuestTask = async function(taskId) {
+  if (busy) throw new Error('正在同步資料，請稍後再操作。');
+  const account = msal.getActiveAccount();
+  if (!account) throw new Error('請先登入公司帳號。');
+  const result = await msal.acquireTokenSilent({scopes, account});
+  const response = await fetch('https://business-card-clickup-system.vercel.app/api/project-quest', {
+    method:'POST', headers:{Authorization:`Bearer ${result.accessToken}`, 'Content-Type':'application/json'},
+    body:JSON.stringify({action:'complete',taskId}), cache:'no-store', signal:AbortSignal.timeout(55000),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || '更新失敗，請重新同步確認。');
+  return data;
+};
