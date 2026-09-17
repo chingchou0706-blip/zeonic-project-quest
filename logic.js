@@ -33,9 +33,9 @@
   function remaining(date, reference = today()) {
     return validDate(date) ? Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(reference + 'T00:00:00Z')) / 86400000) : null;
   }
-  function overdue(date, status, reference = today()) { return status !== '已完成' && remaining(date, reference) !== null && remaining(date, reference) < 0; }
+  function overdue(date, status, reference = today()) { return status !== '已完成' && status !== '已結束' && remaining(date, reference) !== null && remaining(date, reference) < 0; }
   function blockers(task, tasks) {
-    if (task.status === '已完成') return [];
+    if (task.status === '已完成' || task.status === '已結束') return [];
     const reasons = [];
     if (task.status === '卡關') reasons.push(task.reason || '已標記卡關');
     for (const id of task.dependencies || []) {
@@ -54,7 +54,7 @@
     return overdue(project.due, project.status, ref) || project.tasks.some(t => t.status !== '已完成' && (overdue(due(t).date, t.status, ref) || parse(t.description).steps.some(s => overdue(s.due, s.status, ref))));
   }
   function next(project) {
-    const candidates = project.tasks.filter(t => t.status !== '已完成' && !blockers(t, project.tasks).length).flatMap(t => {
+    const candidates = project.tasks.filter(t => t.status !== '已完成' && t.status !== '已結束' && !blockers(t, project.tasks).length).flatMap(t => {
       const pending = parse(t.description).steps.filter(s => s.status !== '已完成');
       return pending.length ? pending.map(s => ({ name: `${t.name} → ${s.name}`, taskName: t.name, stepName: s.name, due: s.due })) : [{ name: t.name, taskName: t.name, stepName: null, due: due(t).date }];
     });

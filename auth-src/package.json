@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@azure/msal-browser": "^4.30.0",
+    "esbuild": "^0.28.2"
+  }
+}
