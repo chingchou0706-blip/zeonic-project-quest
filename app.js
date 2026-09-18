@@ -41,16 +41,22 @@ function timing(date, status) {
   if (status === '已完成' || status === '已結束') return status;
   return n < 0 ? `逾期 ${-n} 天` : n === 0 ? '今天截止' : `剩餘 ${n} 天`;
 }
-const blocked = p => p.tasks.some(t => Q.blockers(t, p.tasks).length);
+const blocked = p => Q.isBlocked(p);
 const state = (t, p) => t.status === '已完成' ? 'done' : Q.blockers(t, p.tasks).length ? 'blocked' : t.status === '進行中' ? 'active' : 'pending';
 function badge(label, type = '') { return `<span class="pill ${type}">${E(label)}</span>`; }
 function completeButton(t) {
   const ended = t.status === '已完成' || t.terminal;
   return `<button class="complete-task" data-complete="${E(t.id)}" ${ended || completing.has(t.id) ? 'disabled' : ''}>${completing.has(t.id) ? '儲存中…' : ended ? E(t.status) : '完成'}</button>`;
 }
+function completionText(t) {
+  if (t.status !== '已完成') return '';
+  if (!Q.validDate(t.actualEnd)) return '實際結束未記錄';
+  const late = Q.validDate(t.due) ? -Q.remaining(t.due,t.actualEnd) : 0;
+  return `實際結束：${t.actualEnd}${late > 0 ? ` · 晚完成 ${late} 天` : ''}`;
+}
 function stage(t, p) {
   const s = state(t, p);
-  return `<div class="stage-wrap"><button class="stage ${s}" data-project="${E(p.id)}" data-task="${E(t.id)}" aria-label="查看${E(t.name)}關卡，${E(t.status)}"><span class="orb">${{done:'✓',blocked:'!',active:'●',pending:'○'}[s]}</span><strong>${E(t.name)}</strong><small>預計開始：${E(dateText(t.start))}</small><small>預計結束：${E(dateText(t.due))}</small></button>${completeButton(t)}<small class="completion-feedback" role="status">${E(completionMessages.get(t.id)||'')}</small></div>`;
+  return `<div class="stage-wrap"><button class="stage ${s}" data-project="${E(p.id)}" data-task="${E(t.id)}" aria-label="查看${E(t.name)}關卡，${E(t.status)}"><span class="orb">${{done:'✓',blocked:'!',active:'●',pending:'○'}[s]}</span><strong>${E(t.name)}</strong><small>預計開始：${E(dateText(t.start))}</small><small>預計結束：${E(dateText(t.due))}</small></button>${completeButton(t)}<small class="completion-feedback" role="status">${E(completionMessages.get(t.id)||completionText(t))}</small></div>`;
 }
 function commentSummary(p) {
   if (p.commentState === 'unavailable') return '<p class="empty-stage">最新留言暫時無法載入，請按「重新同步」再試。</p>';
@@ -70,7 +76,7 @@ function render() {
   const selectedStatuses = [...document.querySelectorAll('#status-filter input:checked')].map(x => x.value);
   const result = visibleProjects.filter(p => !selectedStatuses.length || selectedStatuses.includes(normalizeStatus(p.rawStatus))).filter(p => `${p.name} ${p.client} ${p.owner}`.toLowerCase().includes(query)).filter(p=>filter==='all'||filter==='active'&&p.status==='進行中'||filter==='done'||filter==='blocked'&&blocked(p)||filter==='late'&&Q.isLate(p));
   const openProjects = projects.filter(includedProject);
-  document.querySelector('#stats').innerHTML = [[openProjects.length,'全部專案','指定狀態的主任務'],[openProjects.filter(p=>p.status==='進行中').length,'進行中','關卡允許同時推進'],[openProjects.filter(blocked).length,'有卡關','含等待前置關卡'],[openProjects.filter(p=>Q.isLate(p)).length,'有逾期','含專案、關卡與工作步驟'],[projects.filter(p=>p.status==='已完成').length,'已完成','所有清單已完成的專案']].map(([n,label,note],i)=>`<div class="stat"><strong class="${i===2||i===3?'red':''}">${n}</strong><span>${label}</span><small>${note}</small></div>`).join('');
+  document.querySelector('#stats').innerHTML = [[openProjects.length,'全部專案','指定狀態的主任務'],[openProjects.filter(p=>p.status==='進行中').length,'進行中','關卡允許同時推進'],[openProjects.filter(blocked).length,'有卡關','含等待前置關卡'],[openProjects.filter(p=>Q.isLate(p)).length,'有逾期','依預計結束日，卡關優先'],[projects.filter(p=>p.status==='已完成').length,'已完成','所有清單已完成的專案']].map(([n,label,note],i)=>`<div class="stat"><strong class="${i===2||i===3?'red':''}">${n}</strong><span>${label}</span><small>${note}</small></div>`).join('');
   document.querySelector('#projects').innerHTML = lists.map(list => {
     const group = result.filter(p => p.listId === list.id).sort((a,b) => statusRank(a) - statusRank(b));
     return `<section class="list-group" aria-label="${E(list.name)}"><div class="group-heading"><h2>${E(list.name)}</h2><span>${group.length} 個專案</span></div>${group.length ? group.map(card).join('') : '<div class="empty">此清單沒有符合條件的專案。</div>'}</section>`;
@@ -81,7 +87,7 @@ let openTask = null;
 function showTask(p,t) {
   openTask = {p, t};
   const parsed = Q.parse(t.description), d = Q.due(t), reasons=Q.blockers(t,p.tasks);
-  document.querySelector('#detail-body').innerHTML = `<p class="eyebrow">${E(p.name)}</p><h2 id="detail-title">${E(t.name)} ${badge(t.rawStatus || t.status,state(t,p))}</h2><div class="detail-grid"><div><small>負責人</small>${E(t.owner||'待指派')}</div><div><small>開始日期</small>${dateText(t.start)}</div><div><small>截止日期 · ${E(d.source)}</small>${dateText(d.date)}</div><div><small>日期狀態</small>${timing(d.date,t.status)}</div></div>${reasons.map(r=>`<p class="block-note">! ${E(r)}</p>`).join('')}<div class="complete-action">${completeButton(t)}<small>完成後將截止日改為台北今天，並更新 ClickUp 狀態。</small><p role="status">${E(completionMessages.get(t.id)||'')}</p></div><div class="steps-title"><h3>工作步驟</h3><span>${parsed.steps.filter(s=>s.status==='已完成').length} / ${parsed.steps.length} 項完成</span></div>${parsed.steps.length?parsed.steps.map((s,i)=>`<div class="step"><span class="step-index">${String(i+1).padStart(2,'0')}</span><div><strong>${E(s.name)}</strong><small class="${Q.overdue(s.due,s.status)?'late-text':''}">截止 ${s.due} · ${timing(s.due,s.status)}</small></div>${badge(s.status,s.status==='卡關'?'blocked':s.status==='進行中'?'active':'')}</div>`).join(''):'<p class="empty-stage">尚無可辨識的工作步驟，請查看下方完整說明。</p>'}${parsed.notes.length?`<h3>備註與其他內容</h3><pre>${E(parsed.notes.join('\n'))}</pre>`:''}${parsed.warnings.map(w=>`<p class="warning">${E(w)}</p>`).join('')}<details><summary>查看完整 ClickUp 說明原文</summary><pre>${E(t.description||'尚無說明')}</pre></details>`;
+  document.querySelector('#detail-body').innerHTML = `<p class="eyebrow">${E(p.name)}</p><h2 id="detail-title">${E(t.name)} ${badge(t.rawStatus || t.status,state(t,p))}</h2><div class="detail-grid"><div><small>負責人</small>${E(t.owner||'待指派')}</div><div><small>開始日期</small>${dateText(t.start)}</div><div><small>截止日期 · ${E(d.source)}</small>${dateText(d.date)}</div><div><small>日期狀態</small>${timing(d.date,t.status)}</div></div>${reasons.map(r=>`<p class="block-note">! ${E(r)}</p>`).join('')}<div class="complete-action">${completeButton(t)}<small>完成後填入實際結束日期並更新狀態；已填日期會保留，預計結束不變。</small><p role="status">${E(completionMessages.get(t.id)||completionText(t))}</p></div><div class="steps-title"><h3>工作步驟</h3><span>${parsed.steps.filter(s=>s.status==='已完成').length} / ${parsed.steps.length} 項完成</span></div>${parsed.steps.length?parsed.steps.map((s,i)=>`<div class="step"><span class="step-index">${String(i+1).padStart(2,'0')}</span><div><strong>${E(s.name)}</strong><small class="${Q.overdue(s.due,s.status)?'late-text':''}">截止 ${s.due} · ${timing(s.due,s.status)}</small></div>${badge(s.status,s.status==='卡關'?'blocked':s.status==='進行中'?'active':'')}</div>`).join(''):'<p class="empty-stage">尚無可辨識的工作步驟，請查看下方完整說明。</p>'}${parsed.notes.length?`<h3>備註與其他內容</h3><pre>${E(parsed.notes.join('\n'))}</pre>`:''}${parsed.warnings.map(w=>`<p class="warning">${E(w)}</p>`).join('')}<details><summary>查看完整 ClickUp 說明原文</summary><pre>${E(t.description||'尚無說明')}</pre></details>`;
   if (!document.querySelector('#detail').open) document.querySelector('#detail').showModal();
 }
 document.querySelector('#today').textContent = Q.today();
@@ -122,9 +128,9 @@ async function handleComplete(event) {
   try {
     const saved = await window.completeQuestTask(id);
     for (const project of projects) for (const task of project.tasks) if (task.id === id) {
-      task.status = '已完成'; task.rawStatus = saved.rawStatus; task.terminal = true; task.due = saved.due;
+      task.status = '已完成'; task.rawStatus = saved.rawStatus; task.terminal = true; task.actualEnd = saved.actualEnd;
     }
-    completionMessages.set(id, saved.alreadyCompleted ? '此關卡先前已完成，日期未更動。' : `已完成 · ${saved.due}`);
+    completionMessages.delete(id);
   } catch (error) { completionMessages.set(id, error.message || '未能確認更新，請重新同步。'); }
   finally { completing.delete(id); repaint(); }
 }

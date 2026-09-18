@@ -11,7 +11,7 @@ const login = document.querySelector('#login');
 const logout = document.querySelector('#logout');
 const refresh = document.querySelector('#refresh');
 const embedded = window.self !== window.top;
-const cacheKey = 'quest-snapshot-v1';
+const cacheKey = 'quest-snapshot-v2';
 const interval = 10 * 60 * 1000;
 const countdown = document.querySelector('#refresh-countdown');
 let busy = false, snapshot = null, nextRefresh = null, generation = 0;
@@ -142,7 +142,7 @@ window.completeQuestTask = async function(taskId) {
   if (!response.ok) throw new Error(data.error || '更新失敗，請重新同步確認。');
   if (snapshot) {
     for (const project of snapshot.projects) for (const task of project.tasks) if (task.id === taskId) {
-      task.status = '已完成'; task.rawStatus = data.rawStatus; task.terminal = true; task.due = data.due;
+      task.status = '已完成'; task.rawStatus = data.rawStatus; task.terminal = true; task.actualEnd = data.actualEnd;
     }
     saveSnapshot(account);
   }

@@ -34,24 +34,21 @@
     return validDate(date) ? Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(reference + 'T00:00:00Z')) / 86400000) : null;
   }
   function overdue(date, status, reference = today()) { return status !== '已完成' && status !== '已結束' && remaining(date, reference) !== null && remaining(date, reference) < 0; }
-  function blockers(task, tasks) {
-    if (task.status === '已完成' || task.status === '已結束') return [];
-    const reasons = [];
-    if (task.status === '卡關') reasons.push(task.reason || '已標記卡關');
-    for (const id of task.dependencies || []) {
-      const other = tasks.find(t => t.id === id);
-      if (!other) reasons.push('前置關卡資料不完整');
-      else if (other.status !== '已完成') reasons.push(`等待「${other.name}」完成`);
-    }
-    parse(task.description).steps.filter(s => s.status === '卡關').forEach(s => reasons.push(`步驟「${s.name}」卡關`));
-    return reasons;
+  function blockers(task, tasks, ref = today()) {
+    if (!overdue(task.due, task.status, ref)) return [];
+    const index = tasks.findIndex(t => t.id === task.id);
+    return tasks.slice(0, Math.max(0,index)).filter(t => t.status !== '已完成').map(t => `等待左側「${t.name}」完成`);
+  }
+  function isBlocked(project, ref = today()) {
+    return !['已完成','已結束'].includes(project.status) && project.tasks.some(t => blockers(t,project.tasks,ref).length);
   }
   function progress(project) {
     const total = project.tasks.length, done = project.tasks.filter(t => t.status === '已完成').length;
     return { total, done, percent: total ? Math.round(done / total * 100) : null };
   }
   function isLate(project, ref = today()) {
-    return overdue(project.due, project.status, ref) || project.tasks.some(t => t.status !== '已完成' && (overdue(due(t).date, t.status, ref) || parse(t.description).steps.some(s => overdue(s.due, s.status, ref))));
+    if (['已完成','已結束'].includes(project.status) || isBlocked(project,ref)) return false;
+    return overdue(project.due, project.status, ref) || project.tasks.some(t => overdue(t.due,t.status,ref));
   }
   function next(project) {
     const candidates = project.tasks.filter(t => t.status !== '已完成' && t.status !== '已結束' && !blockers(t, project.tasks).length).flatMap(t => {
@@ -61,7 +58,7 @@
     return candidates.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'))[0] || null;
   }
   function escape(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-  const api = { validDate, today, parse, due, remaining, overdue, blockers, progress, isLate, next, escape };
+  const api = { validDate, today, parse, due, remaining, overdue, blockers, progress, isBlocked, isLate, next, escape };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Quest = api;
 })(typeof window !== 'undefined' ? window : globalThis);
