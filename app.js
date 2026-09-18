@@ -6,6 +6,19 @@ const completing = new Set();
 const completionMessages = new Map();
 const allowedStatuses = new Set(['訂單GET', '導入執行', '報價中', '素材準備中', '審查會議', '簽約', '期中', '期末', '待複查', '驗收']);
 const includedProject = p => allowedStatuses.has(String(p.rawStatus || '').trim().toUpperCase());
+const normalizeStatus = s => String(s || '').trim().toUpperCase();
+const statusOrders = {
+  '901800293057': ['報價中','素材準備中','尚未執行科專','審查會議','簽約','期中','期末','待複查','PENDING','結案','PASS 夥伴','FAIL'].reverse(),
+  '901800297105': ['訂單GET','訂金收款','導入執行','驗收','應收尾款','PENDING','結案','PASS 夥伴','FAIL'].reverse(),
+};
+function statusRank(p) {
+  const rank = (statusOrders[p.listId] || []).findIndex(s => normalizeStatus(s) === normalizeStatus(p.rawStatus));
+  return rank < 0 ? 999 : rank;
+}
+function projectBadge(p) {
+  const color = /^#[0-9a-f]{6}$/i.test(p.statusColor || '') ? p.statusColor : '#777777';
+  return `<span class="pill project-status" style="--status-color:${color}"><i></i>${E(p.rawStatus || p.status)}</span>`;
+}
 const dateText = value => Q.validDate(value) ? value : '未設定';
 function timing(date, status) {
   const n = Q.remaining(date);
@@ -34,16 +47,17 @@ function commentSummary(p) {
 function card(p) {
   const n = Q.progress(p), next = Q.next(p);
   const reasons = p.tasks.flatMap(t => Q.blockers(t,p.tasks).map(r => `${t.name}：${r}`));
-  return `<article class="project"><div class="project-top"><div><h2>${E(p.name)}${badge(p.rawStatus || p.status,p.status==='進行中'?'active':'')}</h2><div class="project-meta">負責人 ${E(p.owner)}</div><div class="date-range">${dateText(p.start)} → ${dateText(p.due)} ${badge(timing(p.due,p.status),Q.overdue(p.due,p.status)?'late':'')}</div></div><div class="completion"><small>最後更新</small><strong class="updated-date">${Q.validDate(p.updatedDate)?E(p.updatedDate):'未提供'}</strong><div class="progress"><i style="width:${n.percent||0}%"></i></div><small>${n.done} / ${n.total} 關完成</small></div></div>${p.tasks.length?`<div class="route">${p.tasks.map(t=>stage(t,p)).join('')}</div>`:commentSummary(p)}${reasons.length?`<p class="block-note">! ${E(reasons[0])}${reasons.length>1?`（另 ${reasons.length-1} 項，展開查看）`:''}</p>`:''}<div class="project-bottom"><div class="next"><b>下一步：</b>${next?E(next.taskName)+'（'+E(next.stepName||'')+dateText(next.due)+')':n.total&&n.done===n.total?'所有關卡已完成':p.tasks.length?'先排除卡關或完成前置條件':'建立第一個子任務'}</div><button class="open-project" data-expand="${E(p.id)}" aria-expanded="false" aria-controls="expand-${E(p.id)}">展開專案</button></div><div class="project-details" id="expand-${E(p.id)}" hidden><p><strong>進行中關卡：</strong>${E(p.tasks.filter(t=>t.status==='進行中').map(t=>t.name).join('、')||'目前沒有')}</p>${reasons.map(r=>`<p class="red">${E(r)}</p>`).join('')}<p>點選上方圓形關卡，查看工作步驟、日期與完整說明。</p><p>* 日期來自說明內最晚步驟截止日；未標 * 的日期來自 ClickUp 欄位。</p></div></article>`;
+  return `<article class="project"><div class="project-top"><div><h2>${E(p.name)}${projectBadge(p)}</h2><div class="project-meta">負責人 ${E(p.owner)}</div><div class="date-range">${dateText(p.start)} → ${dateText(p.due)} ${badge(timing(p.due,p.status),Q.overdue(p.due,p.status)?'late':'')}</div></div><div class="completion"><small>最後更新</small><strong class="updated-date">${Q.validDate(p.updatedDate)?E(p.updatedDate):'未提供'}</strong><div class="progress"><i style="width:${n.percent||0}%"></i></div><small>${n.done} / ${n.total} 關完成</small></div></div>${p.tasks.length?`<div class="route">${p.tasks.map(t=>stage(t,p)).join('')}</div>`:commentSummary(p)}${reasons.length?`<p class="block-note">! ${E(reasons[0])}${reasons.length>1?`（另 ${reasons.length-1} 項，展開查看）`:''}</p>`:''}<div class="project-bottom"><div class="next"><b>下一步：</b>${next?E(next.taskName)+'（'+E(next.stepName||'')+dateText(next.due)+')':n.total&&n.done===n.total?'所有關卡已完成':p.tasks.length?'先排除卡關或完成前置條件':'建立第一個子任務'}</div><button class="open-project" data-expand="${E(p.id)}" aria-expanded="false" aria-controls="expand-${E(p.id)}">展開專案</button></div><div class="project-details" id="expand-${E(p.id)}" hidden><p><strong>進行中關卡：</strong>${E(p.tasks.filter(t=>t.status==='進行中').map(t=>t.name).join('、')||'目前沒有')}</p>${reasons.map(r=>`<p class="red">${E(r)}</p>`).join('')}<p>點選上方圓形關卡，查看工作步驟、日期與完整說明。</p><p>* 日期來自說明內最晚步驟截止日；未標 * 的日期來自 ClickUp 欄位。</p></div></article>`;
 }
 function render() {
   const query = document.querySelector('#search').value.trim().toLowerCase();
   const visibleProjects = projects.filter(p => filter === 'done' ? p.status === '已完成' : includedProject(p));
-  const result = visibleProjects.filter(p => `${p.name} ${p.client} ${p.owner}`.toLowerCase().includes(query)).filter(p=>filter==='all'||filter==='active'&&p.status==='進行中'||filter==='done'||filter==='blocked'&&blocked(p)||filter==='late'&&Q.isLate(p));
+  const selectedStatus = document.querySelector('#status-filter').value;
+  const result = visibleProjects.filter(p => !selectedStatus || normalizeStatus(p.rawStatus) === selectedStatus).filter(p => `${p.name} ${p.client} ${p.owner}`.toLowerCase().includes(query)).filter(p=>filter==='all'||filter==='active'&&p.status==='進行中'||filter==='done'||filter==='blocked'&&blocked(p)||filter==='late'&&Q.isLate(p));
   const openProjects = projects.filter(includedProject);
   document.querySelector('#stats').innerHTML = [[openProjects.length,'全部專案','指定狀態的主任務'],[openProjects.filter(p=>p.status==='進行中').length,'進行中','關卡允許同時推進'],[openProjects.filter(blocked).length,'有卡關','含等待前置關卡'],[openProjects.filter(p=>Q.isLate(p)).length,'有逾期','含專案、關卡與工作步驟'],[projects.filter(p=>p.status==='已完成').length,'已完成','所有清單已完成的專案']].map(([n,label,note],i)=>`<div class="stat"><strong class="${i===2||i===3?'red':''}">${n}</strong><span>${label}</span><small>${note}</small></div>`).join('');
   document.querySelector('#projects').innerHTML = lists.map(list => {
-    const group = result.filter(p => p.listId === list.id);
+    const group = result.filter(p => p.listId === list.id).sort((a,b) => statusRank(a) - statusRank(b));
     return `<section class="list-group" aria-label="${E(list.name)}"><div class="group-heading"><h2>${E(list.name)}</h2><span>${group.length} 個專案</span></div>${group.length ? group.map(card).join('') : '<div class="empty">此清單沒有符合條件的專案。</div>'}</section>`;
   }).join('');
   document.querySelector('#count').textContent = `${result.length} 個符合條件的專案`;
@@ -58,6 +72,7 @@ function showTask(p,t) {
 document.querySelector('#today').textContent = Q.today();
 document.querySelector('#updated').textContent = '尚未同步';
 document.querySelector('#search').addEventListener('input',render);
+document.querySelector('#status-filter').addEventListener('change',render);
 document.querySelector('.filters').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;filter=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));render();});
 document.querySelector('#projects').addEventListener('click',e=>{
   const stageButton=e.target.closest('[data-task]');
@@ -70,6 +85,10 @@ render();
 
 window.updateQuestData = function(data) {
   projects = data?.projects || []; lists = data?.lists || [];
+  const select = document.querySelector('#status-filter'), previous = select.value;
+  const names = [...new Set([...Object.values(statusOrders).flat().filter(s => allowedStatuses.has(normalizeStatus(s))), '結案'])];
+  select.innerHTML = '<option value="">全部狀態</option>' + names.map(s => `<option value="${E(normalizeStatus(s))}">${E(s)}</option>`).join('');
+  select.value = names.some(s => normalizeStatus(s) === previous) ? previous : '';
   document.querySelector('#stats').hidden = !data;
   document.querySelector('.workspace').hidden = !data;
   document.querySelector('#updated').textContent = data ? '資料更新：' + new Date(data.updated).toLocaleString('zh-TW', {timeZone:'Asia/Taipei',hour12:false}) : '尚未同步';

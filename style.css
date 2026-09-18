@@ -13,3 +13,5 @@
 .completion .updated-date{display:block;font:15px/1.6 ui-monospace,monospace;white-space:nowrap}
 
 .external-open{display:inline-flex;align-items:center;padding:8px 12px;color:#9e1b16}
+
+.status-filter{display:flex;align-items:center;gap:8px;font-size:12px;color:#5f6368}.status-filter select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;background:white}.project-status{color:var(--ink);background:white;border:1px solid var(--status-color)}.project-status i{display:inline-block;width:8px;height:8px;margin-right:5px;border-radius:50%;background:var(--status-color)}
