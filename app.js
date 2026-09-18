@@ -6,6 +6,11 @@ const completing = new Set();
 const completionMessages = new Map();
 const allowedStatuses = new Set(['訂單GET', '導入執行', '報價中', '素材準備中', '審查會議', '簽約', '期中', '期末', '待複查', '驗收']);
 const includedProject = p => allowedStatuses.has(String(p.rawStatus || '').trim().toUpperCase());
+const stageOrder = ['啟案會議', '需求訪談', '建置導入', '教育訓練與測試'];
+function stageRank(task) {
+  const rank = stageOrder.indexOf(String(task.name || '').trim());
+  return rank < 0 ? stageOrder.length : rank;
+}
 const normalizeStatus = s => String(s || '').trim().toUpperCase();
 const statusOrders = {
   '901800293057': ['報價中','素材準備中','尚未執行科專','審查會議','簽約','期中','期末','待複查','PENDING','結案','PASS 夥伴','FAIL'].reverse(),
@@ -84,7 +89,7 @@ document.querySelector('#close').addEventListener('click',()=>document.querySele
 render();
 
 window.updateQuestData = function(data) {
-  projects = data?.projects || []; lists = data?.lists || [];
+  projects = (data?.projects || []).map(p => ({ ...p, tasks: [...p.tasks].sort((a,b) => stageRank(a) - stageRank(b)) })); lists = data?.lists || [];
   const previous = [...document.querySelectorAll('#status-filter input:checked')].map(x => x.value);
   const names = [...new Set([...Object.values(statusOrders).flat().filter(s => allowedStatuses.has(normalizeStatus(s))), '結案'])];
   document.querySelector('#status-filter').innerHTML = '<small>未勾選時顯示全部狀態</small>' + names.map(s => `<label><input type="checkbox" value="${E(normalizeStatus(s))}" ${previous.includes(normalizeStatus(s)) ? 'checked' : ''}>${E(s)}</label>`).join('');
