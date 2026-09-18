@@ -11,11 +11,40 @@ const login = document.querySelector('#login');
 const logout = document.querySelector('#logout');
 const refresh = document.querySelector('#refresh');
 const embedded = window.self !== window.top;
-let busy = false;
-function clear() { window.updateQuestData(null); }
+const cacheKey = 'quest-snapshot-v1';
+const interval = 5 * 60 * 1000;
+const countdown = document.querySelector('#refresh-countdown');
+let busy = false, snapshot = null, nextRefresh = null, generation = 0;
+function clear() {
+  generation++; snapshot = null; nextRefresh = null;
+  try { sessionStorage.removeItem(cacheKey); } catch {}
+  window.updateQuestData(null); updateCountdown();
+}
+function saveSnapshot(account) {
+  if (!embedded) return;
+  try { sessionStorage.setItem(cacheKey, JSON.stringify({ account: account.homeAccountId, data: snapshot })); }
+  catch { message.textContent += '（瀏覽器無法保留暫存，切換回來可能需要重新同步。）'; }
+}
+function showConnected(account) {
+  login.hidden = true; logout.hidden = false; refresh.hidden = false;
+  document.querySelector('.mode').textContent = account.name || '公司帳號已登入';
+}
+function updateCountdown() {
+  if (embedded) { countdown.textContent = '手動更新 · 切換頁面保留上次資料'; return; }
+  if (busy) { countdown.textContent = '正在更新…'; return; }
+  if (!nextRefresh) { countdown.textContent = '自動更新：登入後每 5 分鐘'; return; }
+  const seconds = Math.max(0, Math.ceil((nextRefresh - Date.now()) / 1000));
+  countdown.textContent = `下次自動更新 ${String(Math.floor(seconds / 60)).padStart(2,'0')}:${String(seconds % 60).padStart(2,'0')}`;
+}
+updateCountdown();
+if (!embedded) setInterval(() => {
+  updateCountdown();
+  if (nextRefresh && Date.now() >= nextRefresh && !busy) load();
+}, 1000);
 async function load() {
   if (busy) return;
   busy = true; refresh.disabled = true;
+  const requestGeneration = generation; updateCountdown();
   message.textContent = '正在讀取 ClickUp 專案…';
   try {
     const account = msal.getActiveAccount();
@@ -25,17 +54,29 @@ async function load() {
       headers: { Authorization: `Bearer ${result.accessToken}` }, cache: 'no-store', signal: AbortSignal.timeout(55000),
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `同步失敗（${response.status}）`);
+    if (!response.ok) {
+      const error = new Error(data.error || `同步失敗（${response.status}）`);
+      error.authFailure = [401,403].includes(response.status); throw error;
+    }
     if (!Array.isArray(data.projects) || !Array.isArray(data.lists)) throw new Error('伺服器回傳格式錯誤。');
-    window.updateQuestData(data);
+    if (requestGeneration !== generation) return;
+    snapshot = data; window.updateQuestData(data);
     message.textContent = '已連接 ClickUp · 可完成關卡';
-    login.hidden = true; logout.hidden = false; refresh.hidden = false;
-    document.querySelector('.mode').textContent = account.name || '公司帳號已登入';
+    showConnected(account); saveSnapshot(account);
   } catch (error) {
-    clear();
-    message.textContent = error instanceof InteractionRequiredAuthError ? '登入已到期，請重新登入。' : `無法讀取專案：${error.message || '請稍後再試'}`;
-    login.hidden = false;
-  } finally { busy = false; refresh.disabled = false; }
+    if (requestGeneration !== generation) return;
+    if (error instanceof InteractionRequiredAuthError || error.authFailure) {
+      clear(); login.hidden = false;
+      message.textContent = '登入或權限需要重新確認，請重新登入。';
+    } else {
+      message.textContent = `同步失敗：${error.message || '請稍後再試'}${snapshot ? '（保留上次成功資料）' : ''}`;
+      login.hidden = !!snapshot;
+    }
+  } finally {
+    busy = false; refresh.disabled = false;
+    if (!embedded && requestGeneration === generation && msal.getActiveAccount()) nextRefresh = Date.now() + interval;
+    updateCountdown();
+  }
 }
 async function initialize() {
   try {
@@ -44,7 +85,17 @@ async function initialize() {
     if (result?.account) msal.setActiveAccount(result.account);
     else if (msal.getAllAccounts().length === 1) msal.setActiveAccount(msal.getAllAccounts()[0]);
     login.disabled = false;
-    if (msal.getActiveAccount()) { logout.hidden = false; refresh.hidden = false; await load(); }
+    if (msal.getActiveAccount()) {
+      const account = msal.getActiveAccount();
+      let cached;
+      if (embedded) {
+        try { cached = JSON.parse(sessionStorage.getItem(cacheKey)); } catch {}
+      }
+      if (cached?.account === account.homeAccountId && Array.isArray(cached?.data?.projects) && Array.isArray(cached?.data?.lists)) {
+        snapshot = cached.data; window.updateQuestData(snapshot); showConnected(account);
+        message.textContent = '已還原上次資料 · 按「重新同步」取得最新進度';
+      } else { logout.hidden = false; refresh.hidden = false; await load(); }
+    }
     else message.textContent = '請使用獲准的 Microsoft 公司帳號登入。';
   } catch (error) {
     clear(); message.textContent = `登入未完成：${error.errorCode || error.message}`;
@@ -89,5 +140,11 @@ window.completeQuestTask = async function(taskId) {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || '更新失敗，請重新同步確認。');
+  if (snapshot) {
+    for (const project of snapshot.projects) for (const task of project.tasks) if (task.id === taskId) {
+      task.status = '已完成'; task.rawStatus = data.rawStatus; task.terminal = true; task.due = data.due;
+    }
+    saveSnapshot(account);
+  }
   return data;
 };

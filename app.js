@@ -90,7 +90,7 @@ window.updateQuestData = function(data) {
   document.querySelector('#status-filter').innerHTML = '<small>未勾選時顯示全部狀態</small>' + names.map(s => `<label><input type="checkbox" value="${E(normalizeStatus(s))}" ${previous.includes(normalizeStatus(s)) ? 'checked' : ''}>${E(s)}</label>`).join('');
   document.querySelector('#stats').hidden = !data;
   document.querySelector('.workspace').hidden = !data;
-  document.querySelector('#updated').textContent = data ? '資料更新：' + new Date(data.updated).toLocaleString('zh-TW', {timeZone:'Asia/Taipei',hour12:false}) : '尚未同步';
+  document.querySelector('#updated').textContent = data ? '最後成功更新：' + new Date(data.updated).toLocaleString('zh-TW', {timeZone:'Asia/Taipei',hour12:false}) : '尚未同步';
   if (!data) { document.querySelector('#detail').close(); document.querySelector('#detail-body').textContent = ''; }
   render();
 };
