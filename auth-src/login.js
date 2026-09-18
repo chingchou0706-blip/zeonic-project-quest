@@ -10,6 +10,7 @@ const message = document.querySelector('#auth-message');
 const login = document.querySelector('#login');
 const logout = document.querySelector('#logout');
 const refresh = document.querySelector('#refresh');
+const embedded = window.self !== window.top;
 let busy = false;
 function clear() { window.updateQuestData(null); }
 async function load() {
@@ -52,12 +53,26 @@ async function initialize() {
 }
 login.addEventListener('click', async () => {
   login.disabled = true;
-  try { await msal.loginRedirect({ scopes, prompt: 'select_account' }); }
-  catch (error) { message.textContent = `登入失敗：${error.errorCode || error.message}`; login.disabled = false; }
+  try {
+    if (embedded) {
+      const result = await msal.loginPopup({ scopes, prompt: 'select_account' });
+      msal.setActiveAccount(result.account);
+      await load();
+      login.disabled = false;
+    } else await msal.loginRedirect({ scopes, prompt: 'select_account' });
+  }
+  catch (error) { message.textContent = embedded ? '登入視窗未完成。請允許彈出視窗後重試，或使用「另開分頁」。' : `登入失敗：${error.errorCode || error.message}`; login.disabled = false; }
 });
 logout.addEventListener('click', async () => {
   clear();
-  try { await msal.logoutRedirect({ account: msal.getActiveAccount() }); }
+  try {
+    if (embedded) {
+      await msal.logoutPopup({ account: msal.getActiveAccount() });
+      login.hidden = false; login.disabled = false; logout.hidden = true; refresh.hidden = true;
+      document.querySelector('.mode').textContent = '公司內部 · 請先登入';
+      message.textContent = '已登出，請使用公司帳號登入。';
+    } else await msal.logoutRedirect({ account: msal.getActiveAccount() });
+  }
   catch { message.textContent = '頁面資料已清除，Microsoft 登出未完成，請重試。'; }
 });
 refresh.addEventListener('click', load);
