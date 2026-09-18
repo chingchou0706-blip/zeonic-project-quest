@@ -52,8 +52,8 @@ function card(p) {
 function render() {
   const query = document.querySelector('#search').value.trim().toLowerCase();
   const visibleProjects = projects.filter(p => filter === 'done' ? p.status === '已完成' : includedProject(p));
-  const selectedStatus = document.querySelector('#status-filter').value;
-  const result = visibleProjects.filter(p => !selectedStatus || normalizeStatus(p.rawStatus) === selectedStatus).filter(p => `${p.name} ${p.client} ${p.owner}`.toLowerCase().includes(query)).filter(p=>filter==='all'||filter==='active'&&p.status==='進行中'||filter==='done'||filter==='blocked'&&blocked(p)||filter==='late'&&Q.isLate(p));
+  const selectedStatuses = [...document.querySelectorAll('#status-filter input:checked')].map(x => x.value);
+  const result = visibleProjects.filter(p => !selectedStatuses.length || selectedStatuses.includes(normalizeStatus(p.rawStatus))).filter(p => `${p.name} ${p.client} ${p.owner}`.toLowerCase().includes(query)).filter(p=>filter==='all'||filter==='active'&&p.status==='進行中'||filter==='done'||filter==='blocked'&&blocked(p)||filter==='late'&&Q.isLate(p));
   const openProjects = projects.filter(includedProject);
   document.querySelector('#stats').innerHTML = [[openProjects.length,'全部專案','指定狀態的主任務'],[openProjects.filter(p=>p.status==='進行中').length,'進行中','關卡允許同時推進'],[openProjects.filter(blocked).length,'有卡關','含等待前置關卡'],[openProjects.filter(p=>Q.isLate(p)).length,'有逾期','含專案、關卡與工作步驟'],[projects.filter(p=>p.status==='已完成').length,'已完成','所有清單已完成的專案']].map(([n,label,note],i)=>`<div class="stat"><strong class="${i===2||i===3?'red':''}">${n}</strong><span>${label}</span><small>${note}</small></div>`).join('');
   document.querySelector('#projects').innerHTML = lists.map(list => {
@@ -85,10 +85,9 @@ render();
 
 window.updateQuestData = function(data) {
   projects = data?.projects || []; lists = data?.lists || [];
-  const select = document.querySelector('#status-filter'), previous = select.value;
+  const previous = [...document.querySelectorAll('#status-filter input:checked')].map(x => x.value);
   const names = [...new Set([...Object.values(statusOrders).flat().filter(s => allowedStatuses.has(normalizeStatus(s))), '結案'])];
-  select.innerHTML = '<option value="">全部狀態</option>' + names.map(s => `<option value="${E(normalizeStatus(s))}">${E(s)}</option>`).join('');
-  select.value = names.some(s => normalizeStatus(s) === previous) ? previous : '';
+  document.querySelector('#status-filter').innerHTML = '<small>未勾選時顯示全部狀態</small>' + names.map(s => `<label><input type="checkbox" value="${E(normalizeStatus(s))}" ${previous.includes(normalizeStatus(s)) ? 'checked' : ''}>${E(s)}</label>`).join('');
   document.querySelector('#stats').hidden = !data;
   document.querySelector('.workspace').hidden = !data;
   document.querySelector('#updated').textContent = data ? '資料更新：' + new Date(data.updated).toLocaleString('zh-TW', {timeZone:'Asia/Taipei',hour12:false}) : '尚未同步';
