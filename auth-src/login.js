@@ -12,7 +12,7 @@ const logout = document.querySelector('#logout');
 const refresh = document.querySelector('#refresh');
 const embedded = window.self !== window.top;
 const cacheKey = 'quest-snapshot-v1';
-const interval = 5 * 60 * 1000;
+const interval = 10 * 60 * 1000;
 const countdown = document.querySelector('#refresh-countdown');
 let busy = false, snapshot = null, nextRefresh = null, generation = 0;
 function clear() {
@@ -32,7 +32,7 @@ function showConnected(account) {
 function updateCountdown() {
   if (embedded) { countdown.textContent = '手動更新 · 切換頁面保留上次資料'; return; }
   if (busy) { countdown.textContent = '正在更新…'; return; }
-  if (!nextRefresh) { countdown.textContent = '自動更新：登入後每 5 分鐘'; return; }
+  if (!nextRefresh) { countdown.textContent = '自動更新：登入後每 10 分鐘'; return; }
   const seconds = Math.max(0, Math.ceil((nextRefresh - Date.now()) / 1000));
   countdown.textContent = `下次自動更新 ${String(Math.floor(seconds / 60)).padStart(2,'0')}:${String(seconds % 60).padStart(2,'0')}`;
 }
