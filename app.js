@@ -49,8 +49,8 @@ function completeButton(t) {
   return `<button class="complete-task" data-complete="${E(t.id)}" ${ended || completing.has(t.id) ? 'disabled' : ''}>${completing.has(t.id) ? '儲存中…' : ended ? E(t.status) : '完成'}</button>`;
 }
 function stage(t, p) {
-  const s = state(t, p), d = Q.due(t), late = Q.overdue(d.date, t.status);
-  return `<div class="stage-wrap"><button class="stage ${s}" data-project="${E(p.id)}" data-task="${E(t.id)}" aria-label="查看${E(t.name)}關卡，${E(t.status)}"><span class="orb">${{done:'✓',blocked:'!',active:'●',pending:'○'}[s]}</span><strong>${E(t.name)}</strong><small>${E(s === 'blocked' ? '卡關／等待前置' : (t.rawStatus || t.status))}</small><small>${E(dateText(d.date))}${d.source.startsWith('說明') ? ' *' : ''}</small><small class="${late ? 'late-text' : ''}">${timing(d.date,t.status)}</small></button>${completeButton(t)}<small class="completion-feedback" role="status">${E(completionMessages.get(t.id)||'')}</small></div>`;
+  const s = state(t, p);
+  return `<div class="stage-wrap"><button class="stage ${s}" data-project="${E(p.id)}" data-task="${E(t.id)}" aria-label="查看${E(t.name)}關卡，${E(t.status)}"><span class="orb">${{done:'✓',blocked:'!',active:'●',pending:'○'}[s]}</span><strong>${E(t.name)}</strong><small>預計開始：${E(dateText(t.start))}</small><small>預計結束：${E(dateText(t.due))}</small></button>${completeButton(t)}<small class="completion-feedback" role="status">${E(completionMessages.get(t.id)||'')}</small></div>`;
 }
 function commentSummary(p) {
   if (p.commentState === 'unavailable') return '<p class="empty-stage">最新留言暫時無法載入，請按「重新同步」再試。</p>';
