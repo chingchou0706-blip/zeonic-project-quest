@@ -14,6 +14,7 @@ const embedded = window.self !== window.top;
 const cacheKey = 'quest-snapshot-v2';
 const interval = 10 * 60 * 1000;
 const countdown = document.querySelector('#refresh-countdown');
+let writing = false;
 let busy = false, snapshot = null, nextRefresh = null, generation = 0;
 function clear() {
   generation++; snapshot = null; nextRefresh = null;
@@ -30,20 +31,24 @@ function showConnected(account) {
   document.querySelector('.mode').textContent = account.name || '公司帳號已登入';
 }
 function updateCountdown() {
-  if (embedded) { countdown.textContent = '手動更新 · 切換頁面保留上次資料'; return; }
+  if (embedded) {
+    const age = snapshot ? Math.max(0, Math.floor((Date.now() - Date.parse(snapshot.updated)) / 60000)) : null;
+    countdown.textContent = age !== null && Number.isFinite(age) ? `手動更新 · 距上次同步 ${age} 分鐘` : '手動更新 · 尚未同步'; return;
+  }
+  if (writing) { countdown.textContent = '正在儲存關卡 · 自動更新暫停'; return; }
   if (busy) { countdown.textContent = '正在更新…'; return; }
   if (!nextRefresh) { countdown.textContent = '自動更新：登入後每 10 分鐘'; return; }
   const seconds = Math.max(0, Math.ceil((nextRefresh - Date.now()) / 1000));
   countdown.textContent = `下次自動更新 ${String(Math.floor(seconds / 60)).padStart(2,'0')}:${String(seconds % 60).padStart(2,'0')}`;
 }
 updateCountdown();
-if (!embedded) setInterval(() => {
+setInterval(() => {
   updateCountdown();
-  if (nextRefresh && Date.now() >= nextRefresh && !busy) load();
+  if (!embedded && nextRefresh && Date.now() >= nextRefresh && !busy && !writing) load();
 }, 1000);
 async function load() {
-  if (busy) return;
-  busy = true; refresh.disabled = true;
+  if (busy || writing) return;
+  busy = true; refresh.disabled = true; window.setQuestBusy?.(true);
   const requestGeneration = generation; updateCountdown();
   message.textContent = '正在讀取 ClickUp 專案…';
   try {
@@ -73,7 +78,7 @@ async function load() {
       login.hidden = !!snapshot;
     }
   } finally {
-    busy = false; refresh.disabled = false;
+    busy = false; refresh.disabled = false; window.setQuestBusy?.(false);
     if (!embedded && requestGeneration === generation && msal.getActiveAccount()) nextRefresh = Date.now() + interval;
     updateCountdown();
   }
@@ -93,7 +98,7 @@ async function initialize() {
       }
       if (cached?.account === account.homeAccountId && Array.isArray(cached?.data?.projects) && Array.isArray(cached?.data?.lists)) {
         snapshot = cached.data; window.updateQuestData(snapshot); showConnected(account);
-        message.textContent = '已還原上次資料 · 按「重新同步」取得最新進度';
+        message.textContent = '已還原上次資料 · 按「重新同步」取得最新進度'; updateCountdown();
       } else { logout.hidden = false; refresh.hidden = false; await load(); }
     }
     else message.textContent = '請使用獲准的 Microsoft 公司帳號登入。';
@@ -130,9 +135,12 @@ refresh.addEventListener('click', load);
 initialize();
 
 window.completeQuestTask = async function(taskId) {
-  if (busy) throw new Error('正在同步資料，請稍後再操作。');
+  if (busy || writing) throw new Error('正在同步或儲存，請稍後再操作。');
   const account = msal.getActiveAccount();
   if (!account) throw new Error('請先登入公司帳號。');
+  writing = true; refresh.disabled = true; window.setQuestBusy?.(true); updateCountdown();
+  const requestGeneration = generation;
+  try {
   const result = await msal.acquireTokenSilent({scopes, account});
   const response = await fetch('https://business-card-clickup-system.vercel.app/api/project-quest', {
     method:'POST', headers:{Authorization:`Bearer ${result.accessToken}`, 'Content-Type':'application/json'},
@@ -140,6 +148,7 @@ window.completeQuestTask = async function(taskId) {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || '更新失敗，請重新同步確認。');
+  if (requestGeneration !== generation) throw new Error('登入狀態已變更，請重新同步確認。');
   if (snapshot) {
     for (const project of snapshot.projects) for (const task of project.tasks) if (task.id === taskId) {
       task.status = '已完成'; task.rawStatus = data.rawStatus; task.terminal = true; task.actualEnd = data.actualEnd;
@@ -147,4 +156,9 @@ window.completeQuestTask = async function(taskId) {
     saveSnapshot(account);
   }
   return data;
+  } finally {
+    writing = false; refresh.disabled = busy; window.setQuestBusy?.(busy);
+    if (!embedded && requestGeneration === generation && msal.getActiveAccount()) nextRefresh = Date.now() + interval;
+    updateCountdown();
+  }
 };

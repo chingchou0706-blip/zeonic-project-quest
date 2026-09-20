@@ -2,6 +2,8 @@
 const Q = window.Quest, E = Q.escape;
 let projects = [], lists = [];
 let filter = 'all';
+let questBusy = false;
+const expandedProjects = new Set();
 const completing = new Set();
 const completionMessages = new Map();
 const allowedStatuses = new Set(['訂單GET', '導入執行', '報價中', '素材準備中', '審查會議', '簽約', '期中', '期末', '待複查', '驗收']);
@@ -46,7 +48,7 @@ const state = (t, p) => t.status === '已完成' ? 'done' : Q.blockers(t, p.task
 function badge(label, type = '') { return `<span class="pill ${type}">${E(label)}</span>`; }
 function completeButton(t) {
   const ended = t.status === '已完成' || t.terminal;
-  return `<button class="complete-task" data-complete="${E(t.id)}" ${ended || completing.has(t.id) ? 'disabled' : ''}>${completing.has(t.id) ? '儲存中…' : ended ? E(t.status) : '完成'}</button>`;
+  return `<button class="complete-task" data-complete="${E(t.id)}" ${ended || questBusy || completing.has(t.id) ? 'disabled' : ''}>${completing.has(t.id) ? '儲存中…' : ended ? E(t.status) : '完成'}</button>`;
 }
 function completionText(t) {
   if (t.status !== '已完成') return '';
@@ -68,7 +70,7 @@ function commentSummary(p) {
 function card(p) {
   const n = Q.progress(p), next = Q.next(p);
   const reasons = p.tasks.flatMap(t => Q.blockers(t,p.tasks).map(r => `${t.name}：${r}`));
-  return `<article class="project"><div class="project-top"><div><h2>${E(p.name)}${projectBadge(p)}</h2><div class="project-meta">負責人 ${E(p.owner)}</div><div class="date-range">${dateText(p.start)} → ${dateText(p.due)} ${badge(blocked(p)?'有卡關':Q.isLate(p)?'有逾期':timing(p.due,p.status),blocked(p)?'blocked':Q.isLate(p)?'late':'')}</div></div><div class="completion"><small>最後更新</small><strong class="updated-date">${Q.validDate(p.updatedDate)?E(p.updatedDate):'未提供'}</strong><div class="progress"><i style="width:${n.percent||0}%"></i></div><small>${n.done} / ${n.total} 關完成</small></div></div>${p.tasks.length?`<div class="route">${p.tasks.map(t=>stage(t,p)).join('')}</div>`:commentSummary(p)}${reasons.length?`<p class="block-note">! ${E(reasons[0])}${reasons.length>1?`（另 ${reasons.length-1} 項，展開查看）`:''}</p>`:''}<div class="project-bottom"><div class="next"><b>下一步：</b>${next?E(next.taskName)+'（'+E(next.stepName||'')+dateText(next.due)+')':n.total&&n.done===n.total?'所有關卡已完成':p.tasks.length?'先排除卡關或完成前置條件':'建立第一個子任務'}</div><button class="open-project" data-expand="${E(p.id)}" aria-expanded="false" aria-controls="expand-${E(p.id)}">展開專案</button></div><div class="project-details" id="expand-${E(p.id)}" hidden><p><strong>進行中關卡：</strong>${E(p.tasks.filter(t=>t.status==='進行中').map(t=>t.name).join('、')||'目前沒有')}</p>${reasons.map(r=>`<p class="red">${E(r)}</p>`).join('')}<p>點選上方圓形關卡，查看工作步驟、日期與完整說明。</p><p>* 日期來自說明內最晚步驟截止日；未標 * 的日期來自 ClickUp 欄位。</p></div></article>`;
+  return `<article class="project"><div class="project-top"><div><h2>${E(p.name)}${projectBadge(p)}</h2><div class="project-meta">負責人 ${E(p.owner)}</div><div class="date-range">${dateText(p.start)} → ${dateText(p.due)} ${badge(blocked(p)?'有卡關':Q.isLate(p)?'有逾期':timing(p.due,p.status),blocked(p)?'blocked':Q.isLate(p)?'late':'')}</div></div><div class="completion"><small>最後更新</small><strong class="updated-date">${Q.validDate(p.updatedDate)?E(p.updatedDate):'未提供'}</strong><div class="progress"><i style="width:${n.percent||0}%"></i></div><small>${n.done} / ${n.total} 關完成</small></div></div>${p.tasks.length?`<div class="route">${p.tasks.map(t=>stage(t,p)).join('')}</div>`:commentSummary(p)}${reasons.length?`<p class="block-note">! ${E(reasons[0])}${reasons.length>1?`（另 ${reasons.length-1} 項，展開查看）`:''}</p>`:''}<div class="project-bottom"><div class="next"><b>下一步：</b>${next?E(next.taskName)+'（'+E(next.stepName||'')+dateText(next.due)+')':n.total&&n.done===n.total?'所有關卡已完成':p.tasks.length?'先排除卡關或完成前置條件':'建立第一個子任務'}</div><button class="open-project" data-expand="${E(p.id)}" aria-expanded="${expandedProjects.has(p.id)}" aria-controls="expand-${E(p.id)}">${expandedProjects.has(p.id)?'收合專案':'展開專案'}</button></div><div class="project-details" id="expand-${E(p.id)}" ${expandedProjects.has(p.id)?'':'hidden'}><p><strong>進行中關卡：</strong>${E(p.tasks.filter(t=>t.status==='進行中').map(t=>t.name).join('、')||'目前沒有')}</p>${reasons.map(r=>`<p class="red">${E(r)}</p>`).join('')}<p>點選上方圓形關卡，查看工作步驟、日期與完整說明。</p><p>* 日期來自說明內最晚步驟截止日；未標 * 的日期來自 ClickUp 欄位。</p></div></article>`;
 }
 function render() {
   const query = document.querySelector('#search').value.trim().toLowerCase();
@@ -99,7 +101,7 @@ document.querySelector('#projects').addEventListener('click',e=>{
   const stageButton=e.target.closest('[data-task]');
   if(stageButton){const p=projects.find(p=>p.id===stageButton.dataset.project);showTask(p,p.tasks.find(t=>t.id===stageButton.dataset.task));return;}
   const expand=e.target.closest('[data-expand]');
-  if(expand){const region=document.getElementById('expand-'+expand.dataset.expand);region.hidden=!region.hidden;expand.setAttribute('aria-expanded',String(!region.hidden));expand.textContent=region.hidden?'展開專案':'收合專案';}
+  if(expand){const region=document.getElementById('expand-'+expand.dataset.expand);region.hidden=!region.hidden;if(region.hidden)expandedProjects.delete(expand.dataset.expand);else expandedProjects.add(expand.dataset.expand);expand.setAttribute('aria-expanded',String(!region.hidden));expand.textContent=region.hidden?'展開專案':'收合專案';}
 });
 document.querySelector('#close').addEventListener('click',()=>document.querySelector('#detail').close());
 render();
@@ -112,7 +114,7 @@ window.updateQuestData = function(data) {
   document.querySelector('#stats').hidden = !data;
   document.querySelector('.workspace').hidden = !data;
   document.querySelector('#updated').textContent = data ? '最後成功更新：' + new Date(data.updated).toLocaleString('zh-TW', {timeZone:'Asia/Taipei',hour12:false}) : '尚未同步';
-  if (!data) { document.querySelector('#detail').close(); document.querySelector('#detail-body').textContent = ''; }
+  if (!data) { expandedProjects.clear(); openTask = null; document.querySelector('#detail').close(); document.querySelector('#detail-body').textContent = ''; }
   render();
 };
 window.updateQuestData(null);
@@ -136,3 +138,32 @@ async function handleComplete(event) {
 }
 document.querySelector('#projects').addEventListener('click', handleComplete);
 document.querySelector('#detail-body').addEventListener('click', handleComplete);
+
+function repaintQuest() {
+  const dialog = document.querySelector('#detail');
+  const scroll = dialog.scrollTop;
+  const fullDescriptionOpen = document.querySelector('#detail-body details')?.open;
+  render();
+  if (dialog.open && openTask) {
+    const p = projects.find(p => p.id === openTask.p.id);
+    const t = p?.tasks.find(t => t.id === openTask.t.id);
+    if (t) {
+      showTask(p,t);
+      const full = document.querySelector('#detail-body details');
+      if (full) full.open = fullDescriptionOpen;
+      dialog.scrollTop = scroll;
+    }
+  }
+}
+window.setQuestBusy = function(value) { questBusy = value; repaintQuest(); };
+let displayedDay = Q.today();
+function checkDay() {
+  const day = Q.today();
+  if (day === displayedDay) return;
+  displayedDay = day; document.querySelector('#today').textContent = day;
+  repaintQuest();
+}
+setInterval(checkDay, 1000);
+document.addEventListener('visibilitychange', checkDay);
+window.addEventListener('focus', checkDay);
+window.addEventListener('pageshow', checkDay);
