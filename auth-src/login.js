@@ -11,7 +11,7 @@ const login = document.querySelector('#login');
 const logout = document.querySelector('#logout');
 const refresh = document.querySelector('#refresh');
 const embedded = window.self !== window.top;
-const cacheKey = 'quest-snapshot-v2';
+const cacheKey = 'quest-snapshot-v3';
 const interval = 10 * 60 * 1000;
 const countdown = document.querySelector('#refresh-countdown');
 let writing = false;
@@ -46,7 +46,7 @@ setInterval(() => {
   updateCountdown();
   if (!embedded && nextRefresh && Date.now() >= nextRefresh && !busy && !writing) load();
 }, 1000);
-async function load() {
+async function load(manual = false) {
   if (busy || writing) return;
   busy = true; refresh.disabled = true; window.setQuestBusy?.(true);
   const requestGeneration = generation; updateCountdown();
@@ -56,7 +56,7 @@ async function load() {
     if (!account) { clear(); message.textContent = '請使用獲准的 Microsoft 公司帳號登入。'; return; }
     const result = await msal.acquireTokenSilent({ scopes, account });
     const response = await fetch('https://business-card-clickup-system.vercel.app/api/project-quest', {
-      headers: { Authorization: `Bearer ${result.accessToken}` }, cache: 'no-store', signal: AbortSignal.timeout(55000),
+      headers: { Authorization: `Bearer ${result.accessToken}`, ...(manual === true ? {'X-Quest-Refresh':'manual'} : {}) }, cache: 'no-store', signal: AbortSignal.timeout(55000),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -131,7 +131,7 @@ logout.addEventListener('click', async () => {
   }
   catch { message.textContent = '頁面資料已清除，Microsoft 登出未完成，請重試。'; }
 });
-refresh.addEventListener('click', load);
+refresh.addEventListener('click', () => load(true));
 initialize();
 
 window.completeQuestTask = async function(taskId) {
